@@ -14,7 +14,11 @@ import random
 from tqdm import tqdm
 import os
 #from PIL import Image
-#import cv2
+import cv2
+try:
+  from google.colab.patches import cv2_imshow
+except:
+  pass
 
 class Agent:
   def __init__(self, x, y):
@@ -226,6 +230,7 @@ class Environment:
       done = False
 
       reward_sum_for_ep = 0
+      
 
       while not done:
             
@@ -247,13 +252,16 @@ class Environment:
 
           reward_sum_for_ep += reward
 
-                
+          
 
           agent.model.update_replay_memory((current_state, action, reward, self.getVision(agent.getX(),agent.getY()), done))
           agent.model.train(done, step)
 
           #current_states[i] = new_state
         step += 1
+
+      if reward_sum_for_ep > max(self.ep_rewards):
+        best_try = current_state
 
       for index, agent in enumerate(self.agents, start=0):
         self.ep_rewards.append(reward_sum_for_ep)
@@ -262,6 +270,10 @@ class Environment:
           min_reward = min(self.ep_rewards[1:])
           max_reward = max(self.ep_rewards)
           print("max_reward", max_reward, "min_reward", min_reward, "avg", average_reward, "len", len(self.ep_rewards))
+
+          
+          cv2_imshow(cv2.resize(best_try, (100,100), interpolation = cv2.INTER_AREA) )
+
         #agent.model.tensorboard.update_stats(reward_avg=average_reward, reward_min=min_reward, reward_max=max_reward, epsilon=epsilon)
 
       if self.epsilon > self.MIN_EPSILON:
