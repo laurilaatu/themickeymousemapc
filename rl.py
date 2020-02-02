@@ -224,6 +224,9 @@ class Environment:
         step = 0
         # Reset flag and start iterating until episode ends
       done = False
+
+      reward_sum_for_ep = 0
+
       while not done:
             
         for agent in self.agents:
@@ -242,7 +245,7 @@ class Environment:
 
           reward, done = self.step(agent,action)
 
-          #episode_rewards[i] += reward
+          reward_sum_for_ep += reward
 
                 
 
@@ -253,7 +256,7 @@ class Environment:
         step += 1
 
       for index, agent in enumerate(self.agents, start=0):
-        self.ep_rewards.append(reward)
+        self.ep_rewards.append(reward_sum_for_ep)
         if episode % self.AGGREGATE_STATS_EVERY == 0:
           average_reward = sum(self.ep_rewards[1:])/(len(self.ep_rewards)-1)
           min_reward = min(self.ep_rewards[1:])
@@ -279,10 +282,10 @@ class DQNAgent:
     self.DISCOUNT = 0.99
 
     self.MIN_REPLAY_MEMORY_SIZE = 200
-    self.MINIBATCH_SIZE = 32  # How many steps (samples) to use for training
+    self.MINIBATCH_SIZE = 128  # How many steps (samples) to use for training
     self.UPDATE_TARGET_EVERY = 5  # Terminal states (end of episodes)
-    self.INPUTSHAPE = (11,11,1)
-    self.ACTION_SPACE_SIZE = 4
+    self.INPUTSHAPE = (11,11,1) # maybe should update to 4 consecutive frames like the original paper suggests
+    self.ACTION_SPACE_SIZE = 4 # move around
 
     self.REPLAY_MEMORY_SIZE = 50000  # How many last steps to keep for model training
     
@@ -308,7 +311,7 @@ class DQNAgent:
   def create_model(self):
     model = Sequential()
 
-    model.add(Conv2D(256, (3, 3), input_shape=self.INPUTSHAPE))  # (11, 11, 1) a 11x11 BW image.
+    model.add(Conv2D(256, (3, 3), input_shape=self.INPUTSHAPE))  # (11, 11, 4) a 11x11 x 4 BW images.
     model.add(Activation('relu'))
     model.add(MaxPooling2D(pool_size=(2, 2)))
     model.add(Dropout(0.2))
@@ -337,11 +340,11 @@ class DQNAgent:
     #minibatch.shape = (32,11,11,1)
 
     current_states = np.array([transition[0] for transition in minibatch])/255
-    current_states.shape = (32,11,11,1)
+    current_states.shape = (self.MINIBATCH_SIZE,11,11,1)
     current_qs_list = self.model.predict(current_states)
 
     new_current_states = np.array([transition[3] for transition in minibatch])/255
-    new_current_states.shape = (32,11,11,1)
+    new_current_states.shape = (self.MINIBATCH_SIZE,11,11,1)
     future_qs_list = self.target_model.predict(new_current_states)
 
     X = []
@@ -362,7 +365,7 @@ class DQNAgent:
       y.append(current_qs)
       
     X = np.array(X)
-    X.shape = (32,11,11,1)
+    X.shape = (self.MINIBATCH_SIZE,11,11,1)
 
     #self.model.fit(np.array(X)/255, np.array(y), batch_size=MINIBATCH_SIZE, verbose=0, shuffle=False, callbacks=[self.tensorboard] if terminal_state else None)
     self.model.fit(X/255, np.array(y), batch_size=self.MINIBATCH_SIZE, verbose=0, shuffle=False, callbacks=[] if terminal_state else None)
