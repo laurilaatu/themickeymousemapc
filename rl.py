@@ -62,8 +62,11 @@ class Food:
   def getY(self):
     return self.y
 
-
-
+##
+# Create a single agent in the top left corner, it has a vision of +-5,
+# the size of the grid is 10x10 with food in the bottom right corner and
+# there is 20 blocks in the grid
+##
 class Environment:
   def __init__(self, size_x = 10, size_y = 10):
     
@@ -108,36 +111,36 @@ class Environment:
   def step(self, agent, action):
 
     #reward: food +10, move into a block: -1 & episode done
-    reward = 1
+    reward = int(max(0, (agent.getX() + agent.getY())/2 -3 ))
     done = False
     # action 0 - 3 -> move
 
     if action == 0:
 
         if agent.getX() == self.food[0].getX() and agent.getY() - 1 == self.food[0].getY():
-          reward = 10
+          reward = 666
           done = True
         for i in self.blocks:
           if agent.getX() == i.getX() and agent.getY() - 1 == i.getY():
-            reward = -1
+            reward = -10
             done = True
         
         if agent.getY() == 0:
-          reward = -1
+          reward = -10
           done = True
         agent.setY( agent.getY() -1 )
 
     if action == 1:
         if agent.getX() +1 == self.food[0].getX() and agent.getY() == self.food[0].getY():
-          reward = 10
+          reward = 666
           done = True
         for i in self.blocks:
           if agent.getX() +1 == i.getX() and agent.getY() == i.getY():
-            reward = -1
+            reward = -10
             done = True
         
         if agent.getX() +1 == self.size_x:
-          reward = -1
+          reward = -10
           done = True
 
         agent.setX( agent.getX() + 1 )
@@ -146,30 +149,30 @@ class Environment:
 
     if action == 2:
         if agent.getX() == self.food[0].getX() and agent.getY() + 1 == self.food[0].getY():
-          reward = 10
+          reward = 666
           done = True
         for i in self.blocks:
           if agent.getX() == i.getX() and agent.getY() + 1 == i.getY():
-            reward = -1
+            reward = -10
             done = True
         
         if agent.getY() == self.size_y - 1:
-          reward = -1
+          reward = -10
           done = True
 
         agent.setY( agent.getY() + 1 )
 
     if action == 3:
         if agent.getX() -1  == self.food[0].getX() and agent.getY() == self.food[0].getY():
-          reward = 10
+          reward = 666
           done = True
         for i in self.blocks:
           if agent.getX() -1 == i.getX() and agent.getY() == i.getY():
-            reward = -1
+            reward = -10
             done = True
         
         if agent.getX() == 0:
-          reward = -1
+          reward = -10
           done = True
         agent.setX( agent.getX() -1 )
 
@@ -179,22 +182,21 @@ class Environment:
   def getVision(self, x, y):
     vision = np.zeros((11,11))
 
-    
-    
     for cx in range(11):
       for cy in range(11):
         if cx-5 + x >= 0 and cx-5 + x <= self.size_x and cy-5 + y >= 0 and cy-5 + y <= self.size_y :
           vision[cx,cy] = 32
-
-    vision[5,5] = 255
     
     for i in self.blocks:
       if i.getX() > x - 5 and i.getX() < x + 5 and i.getY() > y - 5 and i.getY() < y + 5:
-        vision[i.getX()-x+5,i.getY()-y+5] = 128
+        vision[i.getX()-x+5,i.getY()-y+5] = 96
 
     for i in self.food:
       if i.getX() > x - 5 and i.getX() < x + 5 and i.getY() > y - 5 and i.getY() < y + 5:
-        vision[i.getX()-x+5,i.getY()-y+5] = 192
+        vision[i.getX()-x+5,i.getY()-y+5] = 220
+
+
+    vision[5,5] = 255
 
     return vision
 
@@ -252,16 +254,16 @@ class Environment:
 
           reward_sum_for_ep += reward
 
-          
+          next_state = self.getVision(agent.getX(),agent.getY())
 
-          agent.model.update_replay_memory((current_state, action, reward, self.getVision(agent.getX(),agent.getY()), done))
+          agent.model.update_replay_memory((current_state, action, reward, next_state, done))
           agent.model.train(done, step)
 
           #current_states[i] = new_state
         step += 1
 
       if reward_sum_for_ep > max(self.ep_rewards):
-        best_try = current_state
+        best_try = next_state
 
       for index, agent in enumerate(self.agents, start=0):
         self.ep_rewards.append(reward_sum_for_ep)
@@ -269,10 +271,11 @@ class Environment:
           average_reward = sum(self.ep_rewards[1:])/(len(self.ep_rewards)-1)
           min_reward = min(self.ep_rewards[1:])
           max_reward = max(self.ep_rewards)
-          print("max_reward", max_reward, "min_reward", min_reward, "avg", average_reward, "len", len(self.ep_rewards))
+          avg_100 = sum(self.ep_rewards[-100:])/(100)
+          print("max_reward", max_reward, "min_reward", min_reward, "avg", average_reward, "len", len(self.ep_rewards), "100 avg", avg_100)
 
           
-          cv2_imshow(cv2.resize(best_try, (100,100), interpolation = cv2.INTER_AREA) )
+          cv2_imshow(cv2.resize(best_try, (250,250), interpolation = cv2.INTER_AREA) )
 
         #agent.model.tensorboard.update_stats(reward_avg=average_reward, reward_min=min_reward, reward_max=max_reward, epsilon=epsilon)
 
