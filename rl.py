@@ -17,8 +17,10 @@ import os
 import cv2
 try:
   from google.colab.patches import cv2_imshow
+  runincolab = True
 except:
-  pass
+  runincolab = False
+  import cv2
 
 class Agent:
   def __init__(self, x, y):
@@ -38,7 +40,6 @@ class Agent:
 
   def setModel(self, model):
     self.model = model
-
 
     
 class Block:
@@ -76,20 +77,15 @@ class Environment:
 
     self.size_x = size_x
     self.size_y = size_y
-    
-    
-    #  # Minimum number of steps in a memory to start training
-
 
     self.MODEL_NAME = '2x256'
     self.MIN_REWARD = -200  # For model save
     self.MEMORY_FRACTION = 0.20
 
-    # Environment settings
-    self.EPISODES = 100000
+    self.EPISODES = 10000
+    self.MAX_STEPS = 32
 
-    # Exploration settings
-    self.epsilon = 1  # not a constant, going to be decayed
+    self.epsilon = 1  
     self.EPSILON_DECAY = 0.99975
     self.MIN_EPSILON = 0.001
     
@@ -97,23 +93,25 @@ class Environment:
     self.AGGREGATE_STATS_EVERY = 20  # episodes
 
 
-
-
-
   def createEnv(self):
     self.agents.append(Agent(0,0))
     self.food.append(Food(9,9))
 
     for i in range(20):
-      self.blocks.append(Block(randint(1,9),randint(1,9)))
+      self.blocks.append(Block(randint(1,8),randint(1,8)))
 
 
-  def step(self, agent, action):
+  def step(self, agent, action, step):
 
-    #reward: food +10, move into a block: -1 & episode done
-    reward = int(max(0, (agent.getX() + agent.getY())/2 -3 ))
-    done = False
+    #reward: food +666, move into a block: -10 & episode done
+    reward = -1
+
+    if step > self.MAX_STEPS:
+      done = True
+    else:
+      done = False
     # action 0 - 3 -> move
+    blocks = False
 
     if action == 0:
 
@@ -123,12 +121,12 @@ class Environment:
         for i in self.blocks:
           if agent.getX() == i.getX() and agent.getY() - 1 == i.getY():
             reward = -10
-            done = True
+            blocks = True
         
-        if agent.getY() == 0:
+        if agent.getY() == 0 or blocks:
           reward = -10
-          done = True
-        agent.setY( agent.getY() -1 )
+        else:
+          agent.setY( agent.getY() -1 )
 
     if action == 1:
         if agent.getX() +1 == self.food[0].getX() and agent.getY() == self.food[0].getY():
@@ -137,15 +135,12 @@ class Environment:
         for i in self.blocks:
           if agent.getX() +1 == i.getX() and agent.getY() == i.getY():
             reward = -10
-            done = True
+            blocks = True
         
-        if agent.getX() +1 == self.size_x:
+        if agent.getX() +1 == self.size_x or blocks:
           reward = -10
-          done = True
-
-        agent.setX( agent.getX() + 1 )
-
-
+        else:
+          agent.setX( agent.getX() + 1 )
 
     if action == 2:
         if agent.getX() == self.food[0].getX() and agent.getY() + 1 == self.food[0].getY():
@@ -154,13 +149,12 @@ class Environment:
         for i in self.blocks:
           if agent.getX() == i.getX() and agent.getY() + 1 == i.getY():
             reward = -10
-            done = True
+            blocks = True
         
-        if agent.getY() == self.size_y - 1:
+        if agent.getY() == self.size_y - 1 or blocks:
           reward = -10
-          done = True
-
-        agent.setY( agent.getY() + 1 )
+        else:
+          agent.setY( agent.getY() + 1 )
 
     if action == 3:
         if agent.getX() -1  == self.food[0].getX() and agent.getY() == self.food[0].getY():
@@ -169,22 +163,23 @@ class Environment:
         for i in self.blocks:
           if agent.getX() -1 == i.getX() and agent.getY() == i.getY():
             reward = -10
-            done = True
+            blocks = True
         
-        if agent.getX() == 0:
+        if agent.getX() == 0 or blocks:
           reward = -10
-          done = True
-        agent.setX( agent.getX() -1 )
+        else:
+          agent.setX( agent.getX() -1 )
 
 
     return reward, done
 
+
   def getVision(self, x, y):
-    vision = np.zeros((11,11))
+    vision = np.zeros((11,11), dtype="uint8")
 
     for cx in range(11):
       for cy in range(11):
-        if cx-5 + x >= 0 and cx-5 + x <= self.size_x and cy-5 + y >= 0 and cy-5 + y <= self.size_y :
+        if cx-5 + x >= 0 and cx-5 + x < self.size_x and cy-5 + y >= 0 and cy-5 + y < self.size_y :
           vision[cx,cy] = 32
     
     for i in self.blocks:
@@ -207,8 +202,6 @@ class Environment:
       i.setModel(DQNAgent(1))
     
 
-    
-
 
   def run(self):
         
@@ -227,43 +220,51 @@ class Environment:
         # Restarting episode - reset episode reward and step number
         agent.setX(0)
         agent.setY(0)
-        step = 0
+      step = 0
         # Reset flag and start iterating until episode ends
       done = False
 
       reward_sum_for_ep = 0
-      
+      current_vision = self.getVision(agent.getX(),agent.getY())
+      state = np.stack([current_vision] * 4, axis = 2)
 
       while not done:
             
         for agent in self.agents:
 
 
-          current_state = self.getVision(agent.getX(),agent.getY())
+          current_vision = self.getVision(agent.getX(),agent.getY())
 
           #print(current_state)
 
           if np.random.random() > self.epsilon:
-            action = np.argmax(agent.model.get_qs(current_state))
+            action = np.argmax(agent.model.get_qs(state))
           else:
             action = np.random.randint(0,agent.model.ACTION_SPACE_SIZE)
             
           #print(["up", "right", "down", "left"][action])  
 
-          reward, done = self.step(agent,action)
+          reward, done = self.step(agent,action, step)
 
           reward_sum_for_ep += reward
 
-          next_state = self.getVision(agent.getX(),agent.getY())
+          next_observation = self.getVision(agent.getX(),agent.getY())
 
-          agent.model.update_replay_memory((current_state, action, reward, next_state, done))
+          # take the next observation as the last frame of 4
+          next_state = np.append(state[:, :, 1: ], np.expand_dims(next_observation, 2), axis = 2)
+
+          agent.model.update_replay_memory((state, action, reward, next_state, done))
           agent.model.train(done, step)
 
           #current_states[i] = new_state
+          state = next_state
+          if not runincolab:
+            cv2.imshow("Our agent on an adventure", cv2.resize(next_observation, (250,250), interpolation = cv2.INTER_AREA) )
+            cv2.waitKey(1)
         step += 1
 
       if reward_sum_for_ep > max(self.ep_rewards):
-        best_try = next_state
+        best_try = next_observation
 
       for index, agent in enumerate(self.agents, start=0):
         self.ep_rewards.append(reward_sum_for_ep)
@@ -272,20 +273,16 @@ class Environment:
           min_reward = min(self.ep_rewards[1:])
           max_reward = max(self.ep_rewards)
           avg_100 = sum(self.ep_rewards[-100:])/(100)
-          print("max_reward", max_reward, "min_reward", min_reward, "avg", average_reward, "len", len(self.ep_rewards), "100 avg", avg_100)
+          print("max_reward", max_reward, "min_reward", min_reward, "avg", average_reward, "avg for last 100 eps", avg_100)
 
-          
-          cv2_imshow(cv2.resize(best_try, (250,250), interpolation = cv2.INTER_AREA) )
+          if runincolab:
+            cv2_imshow(cv2.resize(best_try, (250,250), interpolation = cv2.INTER_AREA) )
 
         #agent.model.tensorboard.update_stats(reward_avg=average_reward, reward_min=min_reward, reward_max=max_reward, epsilon=epsilon)
 
       if self.epsilon > self.MIN_EPSILON:
         self.epsilon *= self.EPSILON_DECAY
-        self.epsilon = max(self.MIN_EPSILON, self.epsilon)
-        
-
-      #print("------------------------ FINISHED EPISODE ----------------------------")
-        
+        self.epsilon = max(self.MIN_EPSILON, self.epsilon)        
 
 
 
@@ -297,9 +294,9 @@ class DQNAgent:
     self.DISCOUNT = 0.99
 
     self.MIN_REPLAY_MEMORY_SIZE = 200
-    self.MINIBATCH_SIZE = 128  # How many steps (samples) to use for training
+    self.MINIBATCH_SIZE = 32  # How many steps (samples) to use for training
     self.UPDATE_TARGET_EVERY = 5  # Terminal states (end of episodes)
-    self.INPUTSHAPE = (11,11,1) # maybe should update to 4 consecutive frames like the original paper suggests
+    self.INPUTSHAPE = (11,11,4) # now one bw image, maybe should change to 4 consecutive frames like the original paper suggests
     self.ACTION_SPACE_SIZE = 4 # move around
 
     self.REPLAY_MEMORY_SIZE = 50000  # How many last steps to keep for model training
@@ -313,12 +310,6 @@ class DQNAgent:
     # Target network
     self.target_model = self.create_model()
     self.target_model.set_weights(self.model.get_weights())    
-    # An array with last n steps for training
-    #self.replay_memory = deque(maxlen=REPLAY_MEMORY_SIZE)
-    
-
-    # Custom tensorboard object
-    #self.tensorboard = ModifiedTensorBoard(log_dir="logs/{}-{}".format(MODEL_NAME, int(time.time())))
 
     # Used to count when to update target network with main network's weights
     self.target_update_counter = 0
@@ -355,11 +346,11 @@ class DQNAgent:
     #minibatch.shape = (32,11,11,1)
 
     current_states = np.array([transition[0] for transition in minibatch])/255
-    current_states.shape = (self.MINIBATCH_SIZE,11,11,1)
+    #current_states.shape = (self.MINIBATCH_SIZE,11,11,1)
     current_qs_list = self.model.predict(current_states)
 
     new_current_states = np.array([transition[3] for transition in minibatch])/255
-    new_current_states.shape = (self.MINIBATCH_SIZE,11,11,1)
+    #new_current_states.shape = (self.MINIBATCH_SIZE,11,11,1)
     future_qs_list = self.target_model.predict(new_current_states)
 
     X = []
@@ -380,7 +371,7 @@ class DQNAgent:
       y.append(current_qs)
       
     X = np.array(X)
-    X.shape = (self.MINIBATCH_SIZE,11,11,1)
+    #X.shape = (self.MINIBATCH_SIZE,11,11,1)
 
     #self.model.fit(np.array(X)/255, np.array(y), batch_size=MINIBATCH_SIZE, verbose=0, shuffle=False, callbacks=[self.tensorboard] if terminal_state else None)
     self.model.fit(X/255, np.array(y), batch_size=self.MINIBATCH_SIZE, verbose=0, shuffle=False, callbacks=[] if terminal_state else None)
@@ -395,7 +386,7 @@ class DQNAgent:
   def get_qs(self, state):
     state = np.array(state)
     
-    state.shape = (1,11,11,1)
+    state.shape = (1,11,11,4)
     
     return self.model.predict(state/255)[0]
 
