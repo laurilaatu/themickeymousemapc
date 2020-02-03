@@ -82,7 +82,7 @@ class Environment:
     self.MIN_REWARD = -200  # For model save
     self.MEMORY_FRACTION = 0.20
 
-    self.EPISODES = 10000
+    self.EPISODES = 20000
     self.MAX_STEPS = 48
 
     self.epsilon = 1  
@@ -392,15 +392,15 @@ class DQNAgent:
     model.add(Activation('relu'))
     model.add(Conv2D(32, (3, 3)))
     model.add(Activation('relu'))
-    model.add(MaxPooling2D(pool_size=(2, 2)))
-    model.add(Dropout(0.1))
+    #model.add(MaxPooling2D(pool_size=(2, 2)))
+    #model.add(Dropout(0.1))
 
     model.add(Conv2D(64, (3, 3), padding='same'))
     model.add(Activation('relu'))
     model.add(Conv2D(64, (3, 3)))
     model.add(Activation('relu'))
-    model.add(MaxPooling2D(pool_size=(2, 2)))
-    model.add(Dropout(0.1))
+    #model.add(MaxPooling2D(pool_size=(2, 2)))
+    #model.add(Dropout(0.1))
 
     model.add(Flatten())
     model.add(Dense(256))
@@ -429,11 +429,11 @@ class DQNAgent:
     
     #minibatch.shape = (32,11,11,1)
 
-    current_states = np.array([transition[0] for transition in minibatch])
+    current_states = np.array([transition[0] for transition in minibatch])/255
     #current_states.shape = (self.MINIBATCH_SIZE,11,11,1)
     current_qs_list = self.model.predict(current_states)
 
-    new_current_states = np.array([transition[3] for transition in minibatch])
+    new_current_states = np.array([transition[3] for transition in minibatch])/255
     #new_current_states.shape = (self.MINIBATCH_SIZE,11,11,1)
     future_qs_list = self.target_model.predict(new_current_states)
 
@@ -458,7 +458,7 @@ class DQNAgent:
     #X.shape = (self.MINIBATCH_SIZE,11,11,1)
 
     #self.model.fit(np.array(X)/255, np.array(y), batch_size=MINIBATCH_SIZE, verbose=0, shuffle=False, callbacks=[self.tensorboard] if terminal_state else None)
-    self.model.fit(X, np.array(y), batch_size=self.MINIBATCH_SIZE, verbose=0, shuffle=False, callbacks=[] if terminal_state else None)
+    self.model.fit(X/255, np.array(y), batch_size=self.MINIBATCH_SIZE, verbose=0, shuffle=False, callbacks=[] if terminal_state else None)
 
     if terminal_state:
       self.target_update_counter += 1
@@ -472,7 +472,7 @@ class DQNAgent:
     
     state.shape = (1,11,11,4)
     
-    return self.model.predict(state)[0]
+    return self.model.predict(state/255)[0]
 
 
 env = Environment()
