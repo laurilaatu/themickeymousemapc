@@ -97,11 +97,11 @@ class Environment:
   def createFoods(self):
     self.food = []
     self.food.append(Food(9,9))
-    self.food.append(Food(4,4))
-    self.food.append(Food(0,4))
-    self.food.append(Food(4,0))
-    self.food.append(Food(4,9))
-    self.food.append(Food(9,4))
+    self.food.append(Food(5,5))
+    self.food.append(Food(0,5))
+    self.food.append(Food(5,0))
+    self.food.append(Food(5,9))
+    self.food.append(Food(9,5))
     
   def createEnv(self):
     self.agents.append(Agent(0,0))
@@ -429,11 +429,11 @@ class DQNAgent:
     
     #minibatch.shape = (32,11,11,1)
 
-    current_states = np.array([transition[0] for transition in minibatch])/255
+    current_states = np.array([transition[0] for transition in minibatch])
     #current_states.shape = (self.MINIBATCH_SIZE,11,11,1)
     current_qs_list = self.model.predict(current_states)
 
-    new_current_states = np.array([transition[3] for transition in minibatch])/255
+    new_current_states = np.array([transition[3] for transition in minibatch])
     #new_current_states.shape = (self.MINIBATCH_SIZE,11,11,1)
     future_qs_list = self.target_model.predict(new_current_states)
 
@@ -458,7 +458,7 @@ class DQNAgent:
     #X.shape = (self.MINIBATCH_SIZE,11,11,1)
 
     #self.model.fit(np.array(X)/255, np.array(y), batch_size=MINIBATCH_SIZE, verbose=0, shuffle=False, callbacks=[self.tensorboard] if terminal_state else None)
-    self.model.fit(X/255, np.array(y), batch_size=self.MINIBATCH_SIZE, verbose=0, shuffle=False, callbacks=[] if terminal_state else None)
+    self.model.fit(X, np.array(y), batch_size=self.MINIBATCH_SIZE, verbose=0, shuffle=False, callbacks=[] if terminal_state else None)
 
     if terminal_state:
       self.target_update_counter += 1
@@ -472,7 +472,7 @@ class DQNAgent:
     
     state.shape = (1,11,11,4)
     
-    return self.model.predict(state/255)[0]
+    return self.model.predict(state)[0]
 
 
 env = Environment()
