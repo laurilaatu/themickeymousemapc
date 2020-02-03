@@ -5,7 +5,7 @@ import numpy as np
 import keras.backend.tensorflow_backend as backend
 from keras.models import Sequential, load_model
 from keras.layers import Dense, Dropout, Conv2D, MaxPooling2D, Activation, Flatten
-from keras.optimizers import Adam
+from keras.optimizers import Adam, RMSprop
 from keras.callbacks import TensorBoard
 import tensorflow as tf
 from collections import deque
@@ -83,7 +83,7 @@ class Environment:
     self.MEMORY_FRACTION = 0.20
 
     self.EPISODES = 10000
-    self.MAX_STEPS = 32
+    self.MAX_STEPS = 48
 
     self.epsilon = 1  
     self.EPSILON_DECAY = 0.99975
@@ -92,18 +92,36 @@ class Environment:
     self.ep_rewards = [-200]
     self.AGGREGATE_STATS_EVERY = 20  # episodes
 
+    self.FOOD_REWARD = 200
 
+  def createFoods(self):
+    self.food = []
+    self.food.append(Food(9,9))
+    self.food.append(Food(4,4))
+    self.food.append(Food(0,4))
+    self.food.append(Food(4,0))
+    self.food.append(Food(4,9))
+    self.food.append(Food(9,4))
+    
   def createEnv(self):
     self.agents.append(Agent(0,0))
-    self.food.append(Food(9,9))
+    self.createFoods()
 
-    for i in range(20):
-      self.blocks.append(Block(randint(1,8),randint(1,8)))
+    for i in range(5):
+      
+      self.blocks.append(Block(randint(1,4),randint(1,4)))
+      self.blocks.append(Block(randint(6,8),randint(6,8)))
+      self.blocks.append(Block(randint(1,4),randint(6,8)))
+      self.blocks.append(Block(randint(6,8),randint(1,4)))
+
+    if runincolab:
+      
+      cv2_imshow(cv2.resize(self.getMap(), (250,250), interpolation = cv2.INTER_AREA))
 
 
   def step(self, agent, action, step):
 
-    #reward: food +666, move into a block: -10 & episode done
+    #reward: food +self.FOOD_REWARD, move into a block: -10 & episode done
     reward = -1
 
     if step > self.MAX_STEPS:
@@ -115,9 +133,11 @@ class Environment:
 
     if action == 0:
 
-        if agent.getX() == self.food[0].getX() and agent.getY() - 1 == self.food[0].getY():
-          reward = 666
-          done = True
+        for food in self.food[:]:
+          if agent.getX() == food.getX() and agent.getY() - 1 == food.getY():
+            reward = self.FOOD_REWARD
+            
+            self.food.remove(food)
         for i in self.blocks:
           if agent.getX() == i.getX() and agent.getY() - 1 == i.getY():
             reward = -10
@@ -129,9 +149,11 @@ class Environment:
           agent.setY( agent.getY() -1 )
 
     if action == 1:
-        if agent.getX() +1 == self.food[0].getX() and agent.getY() == self.food[0].getY():
-          reward = 666
-          done = True
+        for food in self.food[:]:
+          if agent.getX() +1 == food.getX() and agent.getY() == food.getY():
+            reward = self.FOOD_REWARD
+            
+            self.food.remove(food)
         for i in self.blocks:
           if agent.getX() +1 == i.getX() and agent.getY() == i.getY():
             reward = -10
@@ -143,9 +165,11 @@ class Environment:
           agent.setX( agent.getX() + 1 )
 
     if action == 2:
-        if agent.getX() == self.food[0].getX() and agent.getY() + 1 == self.food[0].getY():
-          reward = 666
-          done = True
+        for food in self.food[:]:
+          if agent.getX() == food.getX() and agent.getY() + 1 == food.getY():
+            reward = self.FOOD_REWARD
+            
+            self.food.remove(food)
         for i in self.blocks:
           if agent.getX() == i.getX() and agent.getY() + 1 == i.getY():
             reward = -10
@@ -157,9 +181,11 @@ class Environment:
           agent.setY( agent.getY() + 1 )
 
     if action == 3:
-        if agent.getX() -1  == self.food[0].getX() and agent.getY() == self.food[0].getY():
-          reward = 666
-          done = True
+        for food in self.food[:]:      
+          if agent.getX() -1  == food.getX() and agent.getY() == food.getY():
+            reward = self.FOOD_REWARD
+            
+            self.food.remove(food)
         for i in self.blocks:
           if agent.getX() -1 == i.getX() and agent.getY() == i.getY():
             reward = -10
@@ -169,6 +195,9 @@ class Environment:
           reward = -10
         else:
           agent.setX( agent.getX() -1 )
+          
+    if len(self.food) == 0:
+      done = True
 
 
     return reward, done
@@ -195,6 +224,17 @@ class Environment:
 
     return vision
 
+  def getMap(self):
+    map = np.full((self.size_x, self.size_y), fill_value=32, dtype="uint8")
+
+    for i in self.agents:
+      map[i.getX(),i.getY()] = 255
+    for i in self.blocks:
+      map[i.getX(),i.getY()] = 96
+    for i in self.food:
+      map[i.getX(),i.getY()] = 220
+
+    return map
 
   def createDQNs(self):
 
@@ -221,6 +261,7 @@ class Environment:
         agent.setX(0)
         agent.setY(0)
       step = 0
+      self.createFoods()
         # Reset flag and start iterating until episode ends
       done = False
 
@@ -259,7 +300,20 @@ class Environment:
           #current_states[i] = new_state
           state = next_state
           if not runincolab:
-            cv2.imshow("Our agent on an adventure", cv2.resize(next_observation, (250,250), interpolation = cv2.INTER_AREA) )
+            img = cv2.resize(next_observation, (250,250), interpolation = cv2.INTER_AREA)
+            font                   = cv2.FONT_HERSHEY_SIMPLEX
+            fontScale              = 0.5
+            fontColor              = (255,255,255)
+            lineType               = 2
+
+            cv2.putText(img,str(reward_sum_for_ep), 
+              (10,15), 
+              font, 
+              fontScale,
+              fontColor,
+              lineType)
+            
+            cv2.imshow("Our agent on an adventure", img)
             cv2.waitKey(1)
         step += 1
 
@@ -317,21 +371,51 @@ class DQNAgent:
   def create_model(self):
     model = Sequential()
 
-    model.add(Conv2D(256, (3, 3), input_shape=self.INPUTSHAPE))  # (11, 11, 4) a 11x11 x 4 BW images.
-    model.add(Activation('relu'))
-    model.add(MaxPooling2D(pool_size=(2, 2)))
-    model.add(Dropout(0.2))
+    #model.add(Conv2D(256, kernel_size=(2, 2), input_shape=self.INPUTSHAPE))  # (11, 11, 4) a 11x11 x 4 BW images.
+    #model.add(Activation('relu'))
+    #model.add(MaxPooling2D(pool_size=(2, 2)))
+    #model.add(Dropout(0.2))
 
-    model.add(Conv2D(256, (3, 3)))
+    #model.add(Conv2D(256, kernel_size=(2, 2)))
+    #model.add(Activation('relu'))
+    #model.add(MaxPooling2D(pool_size=(2, 2)))
+    #model.add(Dropout(0.2))
+
+    #model.add(Flatten())
+    #model.add(Dense(64))
+
+    #model.add(Dense(self.ACTION_SPACE_SIZE, activation='softmax'))
+    #model.compile(loss="mse", optimizer=Adam(lr=0.001), metrics=['accuracy'])
+
+    model = Sequential()
+    model.add(Conv2D(32, (3, 3), padding='same', input_shape=self.INPUTSHAPE))
+    model.add(Activation('relu'))
+    model.add(Conv2D(32, (3, 3)))
     model.add(Activation('relu'))
     model.add(MaxPooling2D(pool_size=(2, 2)))
-    model.add(Dropout(0.2))
+    model.add(Dropout(0.1))
+
+    model.add(Conv2D(64, (3, 3), padding='same'))
+    model.add(Activation('relu'))
+    model.add(Conv2D(64, (3, 3)))
+    model.add(Activation('relu'))
+    model.add(MaxPooling2D(pool_size=(2, 2)))
+    model.add(Dropout(0.1))
 
     model.add(Flatten())
-    model.add(Dense(64))
+    model.add(Dense(256))
+    model.add(Activation('relu'))
+    model.add(Dropout(0.5))
+    model.add(Dense(self.ACTION_SPACE_SIZE))
+    model.add(Activation('softmax'))
 
-    model.add(Dense(self.ACTION_SPACE_SIZE, activation='softmax'))
+    # initiate RMSprop optimizer
+    #opt = RMSprop(learning_rate=0.0001, decay=1e-6)
+
+    # Let's train the model using RMSprop
+    #model.compile(loss='categorical_crossentropy', optimizer=opt, metrics=['accuracy'])
     model.compile(loss="mse", optimizer=Adam(lr=0.001), metrics=['accuracy'])
+
     return model
   
   def update_replay_memory(self, transition):
