@@ -82,17 +82,17 @@ class Environment:
     self.MIN_REWARD = -200  # For model save
     self.MEMORY_FRACTION = 0.20
 
-    self.EPISODES = 20000
+    self.EPISODES = 30000
     self.MAX_STEPS = 48
 
     self.epsilon = 1  
-    self.EPSILON_DECAY = 0.99975
-    self.MIN_EPSILON = 0.001
+    self.EPSILON_DECAY = 0.999
+    self.MIN_EPSILON = 0.05
     
     self.ep_rewards = [-200]
     self.AGGREGATE_STATS_EVERY = 20  # episodes
 
-    self.FOOD_REWARD = 200
+    self.FOOD_REWARD = 10
 
   def createFoods(self):
     self.food = []
@@ -122,7 +122,7 @@ class Environment:
   def step(self, agent, action, step):
 
     #reward: food +self.FOOD_REWARD, move into a block: -10 & episode done
-    reward = -1
+    reward = 0
 
     if step > self.MAX_STEPS:
       done = True
@@ -140,11 +140,11 @@ class Environment:
             self.food.remove(food)
         for i in self.blocks:
           if agent.getX() == i.getX() and agent.getY() - 1 == i.getY():
-            reward = -10
+            reward = -1
             blocks = True
         
         if agent.getY() == 0 or blocks:
-          reward = -10
+          reward = -1
         else:
           agent.setY( agent.getY() -1 )
 
@@ -156,11 +156,11 @@ class Environment:
             self.food.remove(food)
         for i in self.blocks:
           if agent.getX() +1 == i.getX() and agent.getY() == i.getY():
-            reward = -10
+            reward = -1
             blocks = True
         
         if agent.getX() +1 == self.size_x or blocks:
-          reward = -10
+          reward = -1
         else:
           agent.setX( agent.getX() + 1 )
 
@@ -172,11 +172,11 @@ class Environment:
             self.food.remove(food)
         for i in self.blocks:
           if agent.getX() == i.getX() and agent.getY() + 1 == i.getY():
-            reward = -10
+            reward = -1
             blocks = True
         
         if agent.getY() == self.size_y - 1 or blocks:
-          reward = -10
+          reward = -1
         else:
           agent.setY( agent.getY() + 1 )
 
@@ -188,11 +188,11 @@ class Environment:
             self.food.remove(food)
         for i in self.blocks:
           if agent.getX() -1 == i.getX() and agent.getY() == i.getY():
-            reward = -10
+            reward = -1
             blocks = True
         
         if agent.getX() == 0 or blocks:
-          reward = -10
+          reward = -1
         else:
           agent.setX( agent.getX() -1 )
           
@@ -390,22 +390,22 @@ class DQNAgent:
     model = Sequential()
     model.add(Conv2D(32, (3, 3), padding='same', input_shape=self.INPUTSHAPE))
     model.add(Activation('relu'))
-    model.add(Conv2D(32, (3, 3)))
-    model.add(Activation('relu'))
-    #model.add(MaxPooling2D(pool_size=(2, 2)))
-    #model.add(Dropout(0.1))
-
-    model.add(Conv2D(64, (3, 3), padding='same'))
-    model.add(Activation('relu'))
     model.add(Conv2D(64, (3, 3)))
     model.add(Activation('relu'))
     #model.add(MaxPooling2D(pool_size=(2, 2)))
-    #model.add(Dropout(0.1))
+    model.add(Dropout(0.1))
+
+    model.add(Conv2D(64, (3, 3), padding='same'))
+    model.add(Activation('relu'))
+    #model.add(Conv2D(64, (3, 3)))
+    #model.add(Activation('relu'))
+    #model.add(MaxPooling2D(pool_size=(2, 2)))
+    model.add(Dropout(0.1))
 
     model.add(Flatten())
-    model.add(Dense(256))
+    model.add(Dense(512))
     model.add(Activation('relu'))
-    model.add(Dropout(0.5))
+    model.add(Dropout(0.2))
     model.add(Dense(self.ACTION_SPACE_SIZE))
     model.add(Activation('softmax'))
 
@@ -414,7 +414,7 @@ class DQNAgent:
 
     # Let's train the model using RMSprop
     #model.compile(loss='categorical_crossentropy', optimizer=opt, metrics=['accuracy'])
-    model.compile(loss="mse", optimizer=Adam(lr=0.001), metrics=['accuracy'])
+    model.compile(loss="categorical_crossentropy", optimizer=RMSprop(lr=0.0001, decay=1e-6), metrics=['accuracy'])
 
     return model
   
