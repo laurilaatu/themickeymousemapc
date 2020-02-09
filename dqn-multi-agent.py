@@ -1,27 +1,42 @@
 from random import randint
 import numpy as np
 
-import numpy as np
-import keras.backend.tensorflow_backend as backend
+#import numpy as np
+#import keras.backend.tensorflow_backend as backend
+
+
+import os
+os.environ["KERAS_BACKEND"] = "plaidml.keras.backend"
+
 from keras.models import Sequential, load_model
 from keras.layers import Dense, Dropout, Conv2D, MaxPooling2D, Activation, Flatten
 from keras.optimizers import Adam, RMSprop
-from keras.callbacks import TensorBoard
-import tensorflow as tf
+#from keras.callbacks import TensorBoard
+#import tensorflow as tf
 from collections import deque
 import time
 import random
 from tqdm import tqdm
-import os
+
 #from PIL import Image
 import cv2
-try:
-  from google.colab.patches import cv2_imshow
-  runincolab = True
-except:
-  runincolab = False
-  import cv2
 
+jupyter = True
+
+if not jupyter:
+
+  try:
+    from google.colab.patches import cv2_imshow
+    runincolab = True
+  except:
+    runincolab = False
+    import cv2
+else:
+  runincolab = False
+
+  from IPython.display import Image
+  import IPython.display
+  import PIL.Image
   
 
 class Agent:
@@ -33,14 +48,22 @@ class Agent:
     
     self.attached = False
     self.attached_block = None
+    
+    self.experience = []
+    self.epsum = 0
+    
+    self.state = None
 
   def setAttach(self, food):
-    self.attached = True
-    self.attached_block = food
+    if not food.attached:
+        self.attached = True
+        self.attached_block = food
+        food.setAttached(True)
     
   def setDetach(self):
     if self.attached:
       self.attached = False
+      self.attached_block.setAttached(False)
       pos = (self.attached_block.getX(), self.attached_block.getY())
       self.attached_block = None
       return pos
@@ -96,8 +119,8 @@ class Food:
   def setY(self, y):
     self.y = y
 
-  def setAttached(self):
-    self.attached = True
+  def setAttached(self, status):
+    self.attached = status
 
   def getAttached(self):
     return self.attached
@@ -118,23 +141,21 @@ class Environment:
     self.size_y = size_y
     
     self.SUBMISSION_AREA = (3,6) # square submission area
-    
-    self.MODEL_NAME = '2x256'
-    self.MIN_REWARD = -200  # For model save
-    self.MEMORY_FRACTION = 0.20
 
-    self.EPISODES = 10000
-    self.MAX_STEPS = 20
+    self.MIN_REWARD = -200
+
+    self.EPISODES = 20000
+    self.MAX_STEPS = 32
 
     self.epsilon = 1  
-    self.EPSILON_DECAY = 0.999
+    self.EPSILON_DECAY = 0.9995
     self.MIN_EPSILON = 0.05
     
     self.ep_rewards = [-200]
     self.AGGREGATE_STATS_EVERY = 20  # episodes
 
-    self.FOOD_REWARD = 50
-    self.ATTACH_REWARD = 10
+    self.FOOD_REWARD = 100
+    self.ATTACH_REWARD = 1
     self.BLOCK_REWARD = -1
 
     self.maxQs = []
@@ -151,17 +172,26 @@ class Environment:
     self.agents.append(Agent(0,0,1))
     self.agents.append(Agent(9,0,2))
     self.createFoods()
+    self.createBlocks()
+    #asdf = env.agents[0].model.global_replay_memory[-i
+    #asdf = asdf[0][:,:,0]
 
+    if jupyter:
+      IPython.display.display(PIL.Image.fromarray(cv2.resize(self.getMap(), (250,250), interpolation = cv2.INTER_AREA)))
+
+  def createBlocks(self):
+    self.blocks = []
+    for i in range(6):
+      self.blocks.append(Block(randint(1,8),randint(1,2)))
+      self.blocks.append(Block(randint(1,8),randint(7,8)))
     for i in range(3):
-      
-      self.blocks.append(Block(randint(1,2),randint(1,2)))
-      self.blocks.append(Block(randint(7,8),randint(7,8)))
-      self.blocks.append(Block(randint(1,2),randint(7,8)))
-      self.blocks.append(Block(randint(7,8),randint(1,2)))
+      self.blocks.append(Block(randint(1,2),randint(3,6)))      
+      self.blocks.append(Block(randint(7,8),randint(3,6)))
 
-    if runincolab:
+    #if runincolab:
       
-      cv2_imshow(cv2.resize(self.getMap(), (250,250), interpolation = cv2.INTER_AREA))
+    #cv2_imshow(cv2.resize(self.getMap(), (250,250), interpolation = cv2.INTER_AREA))
+    
 
 
   def step(self, agent, action, step):
@@ -284,15 +314,15 @@ class Environment:
         if cx-5 + x >= 0 and cx-5 + x < self.size_x and cy-5 + y >= 0 and cy-5 + y < self.size_y :
           vision[cx,cy] = 32
         if cx-5 + x >= self.SUBMISSION_AREA[0] and cx-5 + x <= self.SUBMISSION_AREA[1] and cy-5 + y >= self.SUBMISSION_AREA[0] and cy-5 + y <= self.SUBMISSION_AREA[1] :
-          vision[cx,cy] = 16
+          vision[cx,cy] = 24
     
     for i in self.blocks:
       if i.getX() > x - 5 and i.getX() < x + 5 and i.getY() > y - 5 and i.getY() < y + 5:
-        vision[i.getX()-x+5,i.getY()-y+5] = 96
+        vision[i.getX()-x+5,i.getY()-y+5] = 64
 
     for i in self.food:
       if i.getX() > x - 5 and i.getX() < x + 5 and i.getY() > y - 5 and i.getY() < y + 5:
-        vision[i.getX()-x+5,i.getY()-y+5] = 192
+        vision[i.getX()-x+5,i.getY()-y+5] = 150
         
     for i in self.agents:
       if i.getX() > x - 5 and i.getX() < x + 5 and i.getY() > y - 5 and i.getY() < y + 5:
@@ -312,9 +342,12 @@ class Environment:
     for i in self.agents:
       map[i.getX(),i.getY()] = 255
     for i in self.blocks:
-      map[i.getX(),i.getY()] = 96
+      map[i.getX(),i.getY()] = 64
     for i in self.food:
-      map[i.getX(),i.getY()] = 192
+      try:
+        map[i.getX(),i.getY()] = 150
+      except:
+        pass
     
 
     return map
@@ -331,58 +364,65 @@ class Environment:
   #
   #
   ##############
+
+
     for episode in tqdm(range(1, self.EPISODES + 1), ascii=True, unit='episodes'):
 
-      # Update tensorboard step every episode
-        
+      startin_pos = [(0,0),(9,0),(0,9)]
       for agent in self.agents:
-        #agent.model.tensorboard.step = episode
-
-        # Restarting episode - reset episode reward and step number
-        init_pos = [(0,0),(9,0),(0,9)][random.randint(0,2)]
+        
+        
+        
+        init_pos = startin_pos[random.randint(0,len(startin_pos)-1 )]
+        startin_pos.remove(init_pos)
         agent.setDetach()
         agent.setX(init_pos[0])
         agent.setY(init_pos[1])
+        agent.epsum = 0
+            
+        current_vision = self.getVision(agent.getX(),agent.getY())
+        agent.state = np.stack([current_vision] * 10, axis = 2)
+
       step = 0
       self.createFoods()
-        # Reset flag and start iterating until episode ends
       done = False
 
       reward_sum_for_ep = 0
-      current_vision = self.getVision(agent.getX(),agent.getY())
-      state = np.stack([current_vision] * 4, axis = 2)
+
 
       while not done:
             
         for agent in self.agents:
-
+          
 
           current_vision = self.getVision(agent.getX(),agent.getY())
 
           #print(current_state)
 
           if np.random.random() > self.epsilon:
-            action = np.argmax(agent.model.get_qs(state))
-            self.maxQs.append(max(agent.model.get_qs(state)))
+            action = np.argmax(agent.model.get_qs(agent.state))
+            self.maxQs.append(max(agent.model.get_qs(agent.state)))
           else:
             action = np.random.randint(0,agent.model.ACTION_SPACE_SIZE)
 
           reward, done = self.step(agent,action, step)
 
-          reward_sum_for_ep += reward
+          agent.epsum += reward
+          reward_sum_for_ep += reward  
 
           next_observation = self.getVision(agent.getX(),agent.getY())
 
           # take the next observation as the last frame of 4
-          next_state = np.append(state[:, :, 1: ], np.expand_dims(next_observation, 2), axis = 2)
+          next_state = np.append(agent.state[:, :, 1: ], np.expand_dims(next_observation, 2), axis = 2)
+          #if exploration:
 
-          agent.model.update_replay_memory((state, action, reward, next_state, done))
+          agent.model.update_replay_memory((agent.state, action, reward, next_state, done))
           
           
           agent.model.train(done, step)
 
           #current_states[i] = new_state
-          state = next_state
+          agent.state = next_state
           if not runincolab:
             img = cv2.resize(next_observation, (250,250), interpolation = cv2.INTER_AREA)
             font                   = cv2.FONT_HERSHEY_SIMPLEX
@@ -397,12 +437,14 @@ class Environment:
               fontColor,
               lineType)
             
-            cv2.imshow("Agent number %s"%(str(agent.agentId)), img)
-            cv2.waitKey(1)
+            #cv2.imshow("Agent number %s"%(str(agent.agentId)), img)
+            Image(data=img)
+            #cv2.waitKey(1)
         step += 1
 
       if reward_sum_for_ep > max(self.ep_rewards):
         best_try = self.getMap()
+
 
       for index, agent in enumerate(self.agents, start=0):
         self.ep_rewards.append(reward_sum_for_ep)
@@ -411,10 +453,13 @@ class Environment:
           min_reward = min(self.ep_rewards[1:])
           max_reward = max(self.ep_rewards)
           avg_100 = sum(self.ep_rewards[-100:])/(100)
-          print("max_reward", max_reward, "min_reward", min_reward, "avg", average_reward, "avg for last 100 eps", avg_100)
+          print("| max_reward", max_reward, "| min_reward", min_reward, "| avg", average_reward, "| avg for last 100 eps", avg_100, "| epsilon", self.epsilon)
 
           if runincolab:
             cv2_imshow(cv2.resize(best_try, (250,250), interpolation = cv2.INTER_AREA) )
+          if jupyter:
+            IPython.display.display(PIL.Image.fromarray(cv2.resize(best_try, (250,250), interpolation = cv2.INTER_AREA)))
+          
 
         #agent.model.tensorboard.update_stats(reward_avg=average_reward, reward_min=min_reward, reward_max=max_reward, epsilon=epsilon)
 
@@ -426,6 +471,9 @@ class Environment:
 
 
 # Agent class
+
+
+
 class DQNAgent:
   def __init__(self, agent_id):
 
@@ -434,13 +482,11 @@ class DQNAgent:
     self.MIN_REPLAY_MEMORY_SIZE = 200
     self.MINIBATCH_SIZE = 32  # How many steps (samples) to use for training
     self.UPDATE_TARGET_EVERY = 5  # Terminal states (end of episodes)
-    self.INPUTSHAPE = (11,11,4) # now one bw image, maybe should change to 4 consecutive frames like the original paper suggests
+    self.INPUTSHAPE = (11,11,10) # now one bw image, maybe should change to 4 consecutive frames like the original paper suggests
     self.ACTION_SPACE_SIZE = 6 # move around and attach / detach
 
     self.REPLAY_MEMORY_SIZE = 50000  # How many last steps to keep for model training
-    
-    
-    
+
     self.global_replay_memory = deque(maxlen=self.REPLAY_MEMORY_SIZE)
     
     self.model = self.create_model()
@@ -455,21 +501,6 @@ class DQNAgent:
   def create_model(self):
     model = Sequential()
 
-    #model.add(Conv2D(256, kernel_size=(2, 2), input_shape=self.INPUTSHAPE))  # (11, 11, 4) a 11x11 x 4 BW images.
-    #model.add(Activation('relu'))
-    #model.add(MaxPooling2D(pool_size=(2, 2)))
-    #model.add(Dropout(0.2))
-
-    #model.add(Conv2D(256, kernel_size=(2, 2)))
-    #model.add(Activation('relu'))
-    #model.add(MaxPooling2D(pool_size=(2, 2)))
-    #model.add(Dropout(0.2))
-
-    #model.add(Flatten())
-    #model.add(Dense(64))
-
-    #model.add(Dense(self.ACTION_SPACE_SIZE, activation='softmax'))
-    #model.compile(loss="mse", optimizer=Adam(lr=0.001), metrics=['accuracy'])
 
     model = Sequential()
     model.add(Conv2D(32, (3, 3), padding='same', input_shape=self.INPUTSHAPE))
@@ -493,8 +524,7 @@ class DQNAgent:
     model.add(Dense(self.ACTION_SPACE_SIZE))
     model.add(Activation('softmax'))
 
-    # Let's train the model using RMSprop
-    #model.compile(loss='categorical_crossentropy', optimizer=opt, metrics=['accuracy'])
+
     model.compile(loss="mse", optimizer=RMSprop(lr=0.0001, decay=1e-6), metrics=['accuracy'])
 
     return model
@@ -551,7 +581,7 @@ class DQNAgent:
   def get_qs(self, state):
     state = np.array(state)
     
-    state.shape = (1,11,11,4)
+    state.shape = (1,11,11,10)
     
     return self.model.predict(state/255)[0]
 
@@ -561,4 +591,3 @@ env.createEnv()
 env.createDQNs()
 
 env.run()
-
