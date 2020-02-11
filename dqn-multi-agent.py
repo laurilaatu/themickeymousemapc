@@ -144,7 +144,7 @@ class Environment:
 
     self.MIN_REWARD = -200
 
-    self.EPISODES = 20000
+    self.EPISODES = 15000
     self.MAX_STEPS = 32
 
     self.epsilon = 1  
@@ -155,7 +155,7 @@ class Environment:
     self.AGGREGATE_STATS_EVERY = 20  # episodes
 
     self.FOOD_REWARD = 100
-    self.ATTACH_REWARD = 1
+    self.ATTACH_REWARD = 10
     self.BLOCK_REWARD = -1
 
     self.maxQs = []
@@ -368,23 +368,24 @@ class Environment:
 
     for episode in tqdm(range(1, self.EPISODES + 1), ascii=True, unit='episodes'):
 
+      self.createFoods()
       startin_pos = [(0,0),(9,0),(0,9)]
       for agent in self.agents:
-        
-        
-        
+
         init_pos = startin_pos[random.randint(0,len(startin_pos)-1 )]
         startin_pos.remove(init_pos)
         agent.setDetach()
         agent.setX(init_pos[0])
         agent.setY(init_pos[1])
         agent.epsum = 0
+        
+        agent.experience = []
             
         current_vision = self.getVision(agent.getX(),agent.getY())
         agent.state = np.stack([current_vision] * 10, axis = 2)
 
       step = 0
-      self.createFoods()
+  
       done = False
 
       reward_sum_for_ep = 0
@@ -395,8 +396,8 @@ class Environment:
         for agent in self.agents:
           
 
-          current_vision = self.getVision(agent.getX(),agent.getY())
-
+          #current_vision = self.getVision(agent.getX(),agent.getY())
+          #agent.state = np.append(agent.state[:, :, 1: ], np.expand_dims(current_vision, 2), axis = 2)
           #print(current_state)
 
           if np.random.random() > self.epsilon:
@@ -412,12 +413,13 @@ class Environment:
 
           next_observation = self.getVision(agent.getX(),agent.getY())
 
-          # take the next observation as the last frame of 4
+          # take the next observation as the last frame of the states
           next_state = np.append(agent.state[:, :, 1: ], np.expand_dims(next_observation, 2), axis = 2)
-          #if exploration:
+
 
           agent.model.update_replay_memory((agent.state, action, reward, next_state, done))
           
+          agent.experience.append((agent.state, action, reward, next_state, done))
           
           agent.model.train(done, step)
 
@@ -445,6 +447,14 @@ class Environment:
       if reward_sum_for_ep > max(self.ep_rewards):
         best_try = self.getMap()
 
+        
+      # share experiences after episode
+      for i in range(len(self.agents)):
+        for x in range(len(self.agents)):
+          if x == i:
+            continue
+          for exp in self.agents[x].experience:
+            self.agents[i].model.update_replay_memory(exp)
 
       for index, agent in enumerate(self.agents, start=0):
         self.ep_rewards.append(reward_sum_for_ep)
@@ -503,24 +513,24 @@ class DQNAgent:
 
 
     model = Sequential()
-    model.add(Conv2D(32, (3, 3), padding='same', input_shape=self.INPUTSHAPE))
+    model.add(Conv2D(64, (3, 3), padding='same', input_shape=self.INPUTSHAPE))
     model.add(Activation('relu'))
-    #model.add(Conv2D(64, (3, 3)))
+    #model.add(Conv2D(128, (3, 3)))
     #model.add(Activation('relu'))
     #model.add(MaxPooling2D(pool_size=(2, 2)))
     #model.add(Dropout(0.2))
 
-    model.add(Conv2D(64, (3, 3), padding='same'))
+    model.add(Conv2D(128, (3, 3), padding='same'))
     model.add(Activation('relu'))
     #model.add(Conv2D(64, (3, 3)))
     #model.add(Activation('relu'))
     #model.add(MaxPooling2D(pool_size=(2, 2)))
-    model.add(Dropout(0.25))
+    #model.add(Dropout(0.25))
 
     model.add(Flatten())
     model.add(Dense(512))
     model.add(Activation('relu'))
-    model.add(Dropout(0.5))
+    #model.add(Dropout(0.5))
     model.add(Dense(self.ACTION_SPACE_SIZE))
     model.add(Activation('softmax'))
 
@@ -569,7 +579,7 @@ class DQNAgent:
     #X.shape = (self.MINIBATCH_SIZE,11,11,1)
 
     #self.model.fit(np.array(X)/255, np.array(y), batch_size=MINIBATCH_SIZE, verbose=0, shuffle=False, callbacks=[self.tensorboard] if terminal_state else None)
-    self.model.fit(X/255, np.array(y), batch_size=self.MINIBATCH_SIZE, verbose=0, shuffle=False, callbacks=[] if terminal_state else None)
+    self.model.fit(X/255, np.array(y), batch_size=self.MINIBATCH_SIZE, verbose=0, shuffle=False) #, callbacks=[] if terminal_state else None)
 
     if terminal_state:
       self.target_update_counter += 1
