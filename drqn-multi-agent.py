@@ -4,7 +4,6 @@ import numpy as np
 #import numpy as np
 #import keras.backend.tensorflow_backend as backend
 
-# DRQN with one LSTM layer
 
 import os
 os.environ["KERAS_BACKEND"] = "plaidml.keras.backend"
@@ -148,11 +147,11 @@ class Environment:
 
     self.MIN_REWARD = -200
 
-    self.EPISODES = 15000
+    self.EPISODES = 10000
     self.MAX_STEPS = 32
 
-    self.epsilon = 1  
-    self.EPSILON_DECAY = 0.9995
+    self.epsilon = 1
+    self.EPSILON_DECAY = 0.999
     self.MIN_EPSILON = 0.05
     
     self.ep_rewards = [-200]
@@ -166,11 +165,27 @@ class Environment:
 
   def createFoods(self):
     self.food = []
-    self.food.append(Food(9,9))
-    self.food.append(Food(0,5))
-    self.food.append(Food(5,0))
-    self.food.append(Food(5,9))
-    self.food.append(Food(9,5))
+    
+    positions = []
+    
+    for i in range(1,10):
+      positions.append((0,i))
+    for i in range(1,10):
+      positions.append((9,i))
+    for i in range(1,10):
+      positions.append((i,0))
+    for i in range(1,10):
+      positions.append((i,9))
+    
+    for i in range(6):
+        pos = random.randint(0,len(positions)-1)
+        self.food.append(Food(positions[pos][0],positions[pos][1]))
+        positions.pop(pos)
+    #self.food.append(Food(9,9))
+    #self.food.append(Food(0,5))
+    #self.food.append(Food(5,0))
+    #self.food.append(Food(5,9))
+    #self.food.append(Food(9,5))
     
   def createEnv(self):
     self.agents.append(Agent(0,0,1))
@@ -399,15 +414,14 @@ class Environment:
       while not done:
             
         for agent in self.agents:
-          
-
-          #current_vision = self.getVision(agent.getX(),agent.getY())
-          #agent.state = np.append(agent.state[:, :, 1: ], np.expand_dims(current_vision, 2), axis = 2)
-          #print(current_state)
 
           if np.random.random() > self.epsilon:
-            action = np.argmax(agent.model.get_qs(agent.state))
-            self.maxQs.append(max(agent.model.get_qs(agent.state)))
+            stack =  agent.model.create_stack()
+            #print(stack.shape)
+            stack.shape = (1,32,11,11,1)
+            actions = agent.model.get_qs(stack)
+            action = np.argmax(actions)
+            self.maxQs.append(max(actions))
           else:
             action = np.random.randint(0,agent.model.ACTION_SPACE_SIZE)
 
@@ -433,6 +447,7 @@ class Environment:
           
           agent.experience.append((agent.state, action, reward, next_state, done))
           
+          #if episode > 320:
           agent.model.train(done, step)
 
           #current_states[i] = new_state
@@ -477,7 +492,8 @@ class Environment:
           min_reward = min(self.ep_rewards[1:])
           max_reward = max(self.ep_rewards)
           avg_100 = sum(self.ep_rewards[-100:])/(100)
-          print("| max_reward", max_reward, "| min_reward", min_reward, "| avg", average_reward, "| avg for last 100 eps", avg_100, "| epsilon", self.epsilon)
+          max_100 = max(self.ep_rewards[-100:])
+          print("| max_reward", max_reward, "| min_reward", min_reward, "| avg", average_reward, "| avg for last 100 eps", avg_100, "|max for last 100: ", max_100,  "| epsilon", self.epsilon)
 
           if runincolab:
             cv2_imshow(cv2.resize(best_try, (250,250), interpolation = cv2.INTER_AREA) )
@@ -503,19 +519,18 @@ class DQNAgent:
 
     self.DISCOUNT = 0.99
 
-    self.MIN_REPLAY_MEMORY_SIZE = 200
-    self.MINIBATCH_SIZE = 32  # How many steps (samples) to use for training
-    self.UPDATE_TARGET_EVERY = 5  # Terminal states (end of episodes)
+    self.MIN_REPLAY_MEMORY_SIZE = 320
+    self.MINIBATCH_SIZE = 32
+    self.UPDATE_TARGET_EVERY = 10
     self.INPUTSHAPE = (11,11, 1) # 
-    self.ACTION_SPACE_SIZE = 6 # move around and attach / detach
+    self.ACTION_SPACE_SIZE = 6
 
-    self.REPLAY_MEMORY_SIZE = 50000  # How many last steps to keep for model training
+    self.REPLAY_MEMORY_SIZE = 50000
 
     self.global_replay_memory = deque(maxlen=self.REPLAY_MEMORY_SIZE)
     
     self.model = self.create_model()
         
-    # Target network
     self.target_model = self.create_model()
     self.target_model.set_weights(self.model.get_weights())    
 
@@ -528,53 +543,79 @@ class DQNAgent:
 
     model = Sequential()
     #model.add(TimeDistributed(Conv2D(32, (3, 3), padding='same'), input_shape=(11, 11,1)) )
-    model.add(TimeDistributed(Conv2D(32, (3, 3)), input_shape=(1,11, 11,1)) )
-    model.add(Activation('relu'))
-    #model.add(Conv2D(128, (3, 3)))
-    #model.add(Activation('relu'))
-    #model.add(MaxPooling2D(pool_size=(2, 2)))
-    #model.add(Dropout(0.2))
+    model.add(TimeDistributed(Conv2D(32, (3, 3), padding='valid', activation='relu'), input_shape=(32,11, 11,1)) )
+    model.add(TimeDistributed(Conv2D(64, (3, 3), padding='valid', activation='relu')))
+    #model.add(TimeDistributed(Conv2D(64, (2, 2), padding='same', activation='relu')))
 
-    model.add(TimeDistributed(Conv2D(64, (3, 3), padding='same')))
-    model.add(Activation('relu'))
-    #model.add(Conv2D(64, (3, 3)))
-    #model.add(Activation('relu'))
-    #model.add(MaxPooling2D(pool_size=(2, 2)))
-    #model.add(Dropout(0.25))
 
     model.add(TimeDistributed(Flatten()))
     #model.add(Dense(512))
-    model.add(LSTM(512))
-    model.add(Activation('relu'))
-    #model.add(Dropout(0.5))
+    model.add(LSTM(512, return_sequences=False))
+    #model.add(Dense(512))
+    #model.add(Activation('relu'))
     model.add(Dense(self.ACTION_SPACE_SIZE))
     model.add(Activation('softmax'))
 
 
     model.compile(loss="mse", optimizer=RMSprop(lr=0.0001, decay=1e-6), metrics=['accuracy'])
+    
+    model.summary()
 
     return model
   
   def update_replay_memory(self, transition):
         self.global_replay_memory.append(transition)
 
+  # create
+  def create_stack(self, index=None, future=False, stacksize = 32):
+
+    if index is None:
+      index = len(self.global_replay_memory)-1
+    
+    counter = 1
+    stack = []
+    stack.append(self.global_replay_memory[index][0 if not future else 3])
+    while True:
+      tmp = self.global_replay_memory[index-counter]
+      # tmp is a tuple: (current_state, action, reward, new_current_state, done)
+      if index-counter < 0 or tmp[4] or len(stack) == stacksize:
+      
+        break
+      else:
+        stack.append(tmp[0 if not future else 3])
+      counter += 1
+    
+    
+    for i in range(stacksize-len(stack)):
+      stack.append(stack[-1])
+    
+    stack.reverse()
+    stack = np.array(stack)
+    
+    stack.shape = (stacksize,11,11,1)
+    
+    return stack
+    
+    
   def train(self, terminal_state, step):
     if len(self.global_replay_memory) < self.MIN_REPLAY_MEMORY_SIZE:
       return
-
-    minibatch = random.sample(self.global_replay_memory, self.MINIBATCH_SIZE)
-    #minibatch = np.array(minibatch)
-    #print("mb", minibatch.shape)
-    #print(minibatch[0])
-    #minibatch.shape = (32,1,11,11,1)
-
-    current_states = np.array([transition[0] for transition in minibatch])/255
-    current_states.shape = (self.MINIBATCH_SIZE,1,11,11,1)
+    
+    #plaidML doesn't currently support various length inputs for LSTM, so get full episodes
+    batch_start = random.randint(0,(len(self.global_replay_memory)-32)//32)*32
+    
+    minibatch = [self.global_replay_memory[i] for i in range(batch_start,batch_start+32)]  #self.global_replay_memory[batch_start:batch_start+32]
+    
+    current_states = np.array([self.create_stack(i) for i in range(batch_start,batch_start+32)])/255
+    current_states.shape = (self.MINIBATCH_SIZE,32,11,11,1)
     current_qs_list = self.model.predict(current_states, batch_size=32)
 
-    new_current_states = np.array([transition[3] for transition in minibatch])/255
-    new_current_states.shape = (self.MINIBATCH_SIZE,1,11,11,1)
+    new_current_states = np.array([self.create_stack(i, future=True) for i in range(batch_start,batch_start+32)])/255
+    
+    new_current_states.shape = (self.MINIBATCH_SIZE,32,11,11,1)
+    
     future_qs_list = self.target_model.predict(new_current_states)
+    #print("future qs",future_qs_list)
 
     X = []
     y = []
@@ -590,14 +631,14 @@ class DQNAgent:
       current_qs = current_qs_list[index]
       current_qs[action] = new_q
 
-      X.append(current_state)
+      X.append(current_states[index])
       y.append(current_qs)
       
     X = np.array(X)
-    X.shape = (self.MINIBATCH_SIZE,1,11,11,1)
+    X.shape = (self.MINIBATCH_SIZE,32,11,11,1)
 
     #self.model.fit(np.array(X)/255, np.array(y), batch_size=MINIBATCH_SIZE, verbose=0, shuffle=False, callbacks=[self.tensorboard] if terminal_state else None)
-    self.model.fit(X/255, np.array(y), batch_size=self.MINIBATCH_SIZE, verbose=0, shuffle=False) #, callbacks=[] if terminal_state else None)
+    self.model.fit(X, np.array(y), batch_size=self.MINIBATCH_SIZE, verbose=0, shuffle=False) #, callbacks=[] if terminal_state else None)
 
     if terminal_state:
       self.target_update_counter += 1
@@ -606,12 +647,10 @@ class DQNAgent:
       self.target_model.set_weights(self.model.get_weights())
       self.target_update_counter = 0
 
-  def get_qs(self, state):
-    state = np.array(state)
+  # take in an array of states
+  def get_qs(self, stack):
     
-    state.shape = (1,1,11,11,1)
-    
-    return self.model.predict(state/255)[0]
+    return self.model.predict(stack/255)[0]
 
 
 env = Environment()
