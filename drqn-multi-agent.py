@@ -1,9 +1,7 @@
 from random import randint
 import numpy as np
 
-#import numpy as np
 #import keras.backend.tensorflow_backend as backend
-
 
 import os
 os.environ["KERAS_BACKEND"] = "plaidml.keras.backend"
@@ -128,6 +126,12 @@ class Food:
   def getAttached(self):
     return self.attached
 
+class Dispenser:
+  def __init__(self,x ,y):
+    self.x = x
+    self.y = y
+    
+
 ##
 # Multi agent environment where agents should move food to the center area independently
 #
@@ -139,6 +143,9 @@ class Environment:
     self.blocks = []
     self.agents = []
     self.food = []
+    self.dispensers = []
+    self.submission_areas = []
+    
 
     self.size_x = size_x
     self.size_y = size_y
@@ -165,35 +172,28 @@ class Environment:
 
   def createFoods(self):
     self.food = []
-    
     positions = []
     
-    for i in range(1,10):
+    for i in range(1,9):
       positions.append((0,i))
-    for i in range(1,10):
+    for i in range(1,9):
       positions.append((9,i))
-    for i in range(1,10):
+    for i in range(1,9):
       positions.append((i,0))
-    for i in range(1,10):
+    for i in range(1,9):
       positions.append((i,9))
     
     for i in range(6):
         pos = random.randint(0,len(positions)-1)
         self.food.append(Food(positions[pos][0],positions[pos][1]))
         positions.pop(pos)
-    #self.food.append(Food(9,9))
-    #self.food.append(Food(0,5))
-    #self.food.append(Food(5,0))
-    #self.food.append(Food(5,9))
-    #self.food.append(Food(9,5))
+
     
   def createEnv(self):
     self.agents.append(Agent(0,0,1))
     self.agents.append(Agent(9,0,2))
     self.createFoods()
     self.createBlocks()
-    #asdf = env.agents[0].model.global_replay_memory[-i
-    #asdf = asdf[0][:,:,0]
 
     if jupyter:
       IPython.display.display(PIL.Image.fromarray(cv2.resize(self.getMap(), (250,250), interpolation = cv2.INTER_AREA)))
@@ -206,11 +206,6 @@ class Environment:
     for i in range(3):
       self.blocks.append(Block(randint(1,2),randint(3,6)))      
       self.blocks.append(Block(randint(7,8),randint(3,6)))
-
-    #if runincolab:
-      
-    #cv2_imshow(cv2.resize(self.getMap(), (250,250), interpolation = cv2.INTER_AREA))
-    
 
 
   def step(self, agent, action, step):
@@ -225,11 +220,6 @@ class Environment:
     blocks = False
 
     if action == 0:
-
-        #for food in self.food[:]:
-        #  if agent.getX() == food.getX() and agent.getY() - 1 == food.getY():
-        #    reward = self.FOOD_REWARD
-        #    self.food.remove(food)
         
         for i in self.blocks:
           if agent.getX() == i.getX() and agent.getY() - 1 == i.getY():
@@ -243,10 +233,6 @@ class Environment:
           agent.setY( agent.getY() -1 )
 
     if action == 1:
-        #for food in self.food[:]:
-        #  if agent.getX() +1 == food.getX() and agent.getY() == food.getY():
-        #    reward = self.FOOD_REWARD   
-        #    self.food.remove(food)
         
         for i in self.blocks:
           if agent.getX() +1 == i.getX() and agent.getY() == i.getY():
@@ -260,10 +246,6 @@ class Environment:
           agent.setX( agent.getX() + 1 )
 
     if action == 2:
-        #for food in self.food[:]:
-        #  if agent.getX() == food.getX() and agent.getY() + 1 == food.getY():
-        #    reward = self.FOOD_REWARD
-        #    self.food.remove(food)
         
         for i in self.blocks:
           if agent.getX() == i.getX() and agent.getY() + 1 == i.getY():
@@ -277,10 +259,6 @@ class Environment:
           agent.setY( agent.getY() + 1 )
 
     if action == 3:
-        #for food in self.food[:]:      
-        #  if agent.getX() -1  == food.getX() and agent.getY() == food.getY():
-        #    reward = self.FOOD_REWARD
-        #    self.food.remove(food)
         
         for i in self.blocks:
           if agent.getX() -1 == i.getX() and agent.getY() == i.getY():
@@ -324,7 +302,7 @@ class Environment:
 
     return reward, done
 
-
+  # Get the vision of single agent
   def getVision(self, x, y):
     vision = np.zeros((11,11), dtype="uint8")
 
@@ -353,6 +331,7 @@ class Environment:
 
     return vision
 
+  # Visualization of the full map
   def getMap(self):
     map = np.full((self.size_x, self.size_y), fill_value=32, dtype="uint8")
 
@@ -372,9 +351,9 @@ class Environment:
     return map
 
   def createDQNs(self):
-
+    shared_model = DQNAgent(1)
     for i in self.agents:
-      i.setModel(DQNAgent(1))
+      i.setModel(shared_model)
 
   def run(self):
         
@@ -388,7 +367,8 @@ class Environment:
     for episode in tqdm(range(1, self.EPISODES + 1), ascii=True, unit='episodes'):
 
       self.createFoods()
-      startin_pos = [(0,0),(9,0),(0,9)]
+    
+      startin_pos = [(0,0),(9,0),(0,9),(9,9)]
       for agent in self.agents:
 
         init_pos = startin_pos[random.randint(0,len(startin_pos)-1 )]
@@ -417,8 +397,7 @@ class Environment:
 
           if np.random.random() > self.epsilon:
             stack =  agent.model.create_stack()
-            #print(stack.shape)
-            stack.shape = (1,32,11,11,1)
+            stack.shape = (1,agent.model.HISTORYFRAMES,11,11,1)
             actions = agent.model.get_qs(stack)
             action = np.argmax(actions)
             self.maxQs.append(max(actions))
@@ -443,7 +422,7 @@ class Environment:
           #next_state = next_observation
 
 
-          agent.model.update_replay_memory((agent.state, action, reward, next_state, done))
+          #agent.model.update_replay_memory((agent.state, action, reward, next_state, done))
           
           agent.experience.append((agent.state, action, reward, next_state, done))
           
@@ -473,17 +452,17 @@ class Environment:
             #cv2.waitKey(1)
         step += 1
 
-      if reward_sum_for_ep > max(self.ep_rewards):
+      if reward_sum_for_ep >= max(self.ep_rewards):
         best_try = self.getMap()
 
         
       # share experiences after episode
       for i in range(len(self.agents)):
-        for x in range(len(self.agents)):
-          if x == i:
-            continue
-          for exp in self.agents[x].experience:
-            self.agents[i].model.update_replay_memory(exp)
+        #for x in range(len(self.agents)):
+        #  if x == i:
+        #    continue
+        for exp in self.agents[i].experience:
+          self.agents[i].model.update_replay_memory(exp)
 
       for index, agent in enumerate(self.agents, start=0):
         self.ep_rewards.append(reward_sum_for_ep)
@@ -521,32 +500,31 @@ class DQNAgent:
 
     self.MIN_REPLAY_MEMORY_SIZE = 320
     self.MINIBATCH_SIZE = 32
-    self.UPDATE_TARGET_EVERY = 10
+    self.UPDATE_TARGET_EVERY = 5
     self.INPUTSHAPE = (11,11, 1) # 
     self.ACTION_SPACE_SIZE = 6
+    self.HISTORYFRAMES = 10
 
     self.REPLAY_MEMORY_SIZE = 50000
 
     self.global_replay_memory = deque(maxlen=self.REPLAY_MEMORY_SIZE)
     
-    self.model = self.create_model()
-        
+
+    self.model = self.create_model()        
     self.target_model = self.create_model()
     self.target_model.set_weights(self.model.get_weights())    
 
-    # Used to count when to update target network with main network's weights
     self.target_update_counter = 0
 
   def create_model(self):
-    model = Sequential()
+    
 
-
+    # plaidML doesn't currently support various length inputs for LSTM
+    # create many-to-one LSTM network with TimeDistributed wrapper
     model = Sequential()
-    #model.add(TimeDistributed(Conv2D(32, (3, 3), padding='same'), input_shape=(11, 11,1)) )
-    model.add(TimeDistributed(Conv2D(32, (3, 3), padding='valid', activation='relu'), input_shape=(32,11, 11,1)) )
-    model.add(TimeDistributed(Conv2D(64, (3, 3), padding='valid', activation='relu')))
+    model.add(TimeDistributed(Conv2D(64, (3, 3), padding='same', activation='relu'), input_shape=(self.HISTORYFRAMES,11, 11,1)) )
+    model.add(TimeDistributed(Conv2D(128, (3, 3), padding='same', activation='relu')))
     #model.add(TimeDistributed(Conv2D(64, (2, 2), padding='same', activation='relu')))
-
 
     model.add(TimeDistributed(Flatten()))
     #model.add(Dense(512))
@@ -556,9 +534,8 @@ class DQNAgent:
     model.add(Dense(self.ACTION_SPACE_SIZE))
     model.add(Activation('softmax'))
 
-
-    model.compile(loss="mse", optimizer=RMSprop(lr=0.0001, decay=1e-6), metrics=['accuracy'])
-    
+    #model.compile(loss="mse", optimizer=RMSprop(lr=0.0001, decay=1e-6), metrics=['accuracy'])
+    model.compile(loss='mean_squared_error', optimizer='adam')
     model.summary()
 
     return model
@@ -566,8 +543,8 @@ class DQNAgent:
   def update_replay_memory(self, transition):
         self.global_replay_memory.append(transition)
 
-  # create
-  def create_stack(self, index=None, future=False, stacksize = 32):
+  # instead of storing past frames in replay memory, create them on the fly
+  def create_stack(self, index=None, future=False):
 
     if index is None:
       index = len(self.global_replay_memory)-1
@@ -576,23 +553,25 @@ class DQNAgent:
     stack = []
     stack.append(self.global_replay_memory[index][0 if not future else 3])
     while True:
-      tmp = self.global_replay_memory[index-counter]
       # tmp is a tuple: (current_state, action, reward, new_current_state, done)
-      if index-counter < 0 or tmp[4] or len(stack) == stacksize:
-      
+      tmp = self.global_replay_memory[index-counter]
+      if index-counter < 0 or tmp[4] or len(stack) == self.HISTORYFRAMES:
         break
+        
       else:
+        
         stack.append(tmp[0 if not future else 3])
+        
       counter += 1
     
     
-    for i in range(stacksize-len(stack)):
+    for i in range(self.HISTORYFRAMES-len(stack)):
       stack.append(stack[-1])
     
     stack.reverse()
     stack = np.array(stack)
     
-    stack.shape = (stacksize,11,11,1)
+    stack.shape = (self.HISTORYFRAMES,11,11,1)
     
     return stack
     
@@ -601,18 +580,19 @@ class DQNAgent:
     if len(self.global_replay_memory) < self.MIN_REPLAY_MEMORY_SIZE:
       return
     
-    #plaidML doesn't currently support various length inputs for LSTM, so get full episodes
-    batch_start = random.randint(0,(len(self.global_replay_memory)-32)//32)*32
     
-    minibatch = [self.global_replay_memory[i] for i in range(batch_start,batch_start+32)]  #self.global_replay_memory[batch_start:batch_start+32]
+    #batch_start = random.randint(0,(len(self.global_replay_memory)-32)//32)*32
+    batch_start = random.randint(0,len(self.global_replay_memory)-33)
     
-    current_states = np.array([self.create_stack(i) for i in range(batch_start,batch_start+32)])/255
-    current_states.shape = (self.MINIBATCH_SIZE,32,11,11,1)
-    current_qs_list = self.model.predict(current_states, batch_size=32)
+    minibatch = [self.global_replay_memory[i] for i in range(batch_start,batch_start+self.MINIBATCH_SIZE)]  #self.global_replay_memory[batch_start:batch_start+32]
+    
+    current_states = np.array([self.create_stack(i) for i in range(batch_start,batch_start+self.MINIBATCH_SIZE)])/255
+    current_states.shape = (self.MINIBATCH_SIZE,self.HISTORYFRAMES,11,11,1)
+    current_qs_list = self.model.predict(current_states, batch_size=self.MINIBATCH_SIZE)
 
-    new_current_states = np.array([self.create_stack(i, future=True) for i in range(batch_start,batch_start+32)])/255
+    new_current_states = np.array([self.create_stack(i, future=True) for i in range(batch_start,batch_start+self.MINIBATCH_SIZE)])/255
     
-    new_current_states.shape = (self.MINIBATCH_SIZE,32,11,11,1)
+    new_current_states.shape = (self.MINIBATCH_SIZE,self.HISTORYFRAMES,11,11,1)
     
     future_qs_list = self.target_model.predict(new_current_states)
     #print("future qs",future_qs_list)
@@ -635,7 +615,7 @@ class DQNAgent:
       y.append(current_qs)
       
     X = np.array(X)
-    X.shape = (self.MINIBATCH_SIZE,32,11,11,1)
+    X.shape = (self.MINIBATCH_SIZE,self.HISTORYFRAMES,11,11,1)
 
     #self.model.fit(np.array(X)/255, np.array(y), batch_size=MINIBATCH_SIZE, verbose=0, shuffle=False, callbacks=[self.tensorboard] if terminal_state else None)
     self.model.fit(X, np.array(y), batch_size=self.MINIBATCH_SIZE, verbose=0, shuffle=False) #, callbacks=[] if terminal_state else None)
@@ -647,9 +627,8 @@ class DQNAgent:
       self.target_model.set_weights(self.model.get_weights())
       self.target_update_counter = 0
 
-  # take in an array of states
+
   def get_qs(self, stack):
-    
     return self.model.predict(stack/255)[0]
 
 
