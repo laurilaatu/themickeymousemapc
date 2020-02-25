@@ -158,7 +158,7 @@ class Environment:
     self.MAX_STEPS = 32
 
     self.epsilon = 1
-    self.EPSILON_DECAY = 0.999
+    self.EPSILON_DECAY = 0.9995
     self.MIN_EPSILON = 0.05
     
     self.ep_rewards = [-200]
@@ -368,7 +368,7 @@ class Environment:
 
       self.createFoods()
     
-      startin_pos = [(0,0),(9,0),(0,9),(9,9)]
+      startin_pos = [(0,0),(9,0),(0,9),(9,9),(3,3),(6,6),(3,6),(6,3)]
       for agent in self.agents:
 
         init_pos = startin_pos[random.randint(0,len(startin_pos)-1 )]
@@ -489,10 +489,7 @@ class Environment:
 
 
 
-# Agent class
-
-
-
+# Model for agent
 class DQNAgent:
   def __init__(self, agent_id):
 
@@ -522,9 +519,9 @@ class DQNAgent:
     # plaidML doesn't currently support various length inputs for LSTM
     # create many-to-one LSTM network with TimeDistributed wrapper
     model = Sequential()
-    model.add(TimeDistributed(Conv2D(64, (3, 3), padding='same', activation='relu'), input_shape=(self.HISTORYFRAMES,11, 11,1)) )
-    model.add(TimeDistributed(Conv2D(128, (3, 3), padding='same', activation='relu')))
-    #model.add(TimeDistributed(Conv2D(64, (2, 2), padding='same', activation='relu')))
+    model.add(TimeDistributed(Conv2D(32, (4, 4), strides=(2, 2), padding='same', activation='relu'), input_shape=(self.HISTORYFRAMES,11, 11, 1)) )
+    model.add(TimeDistributed(Conv2D(64, (3, 3), strides=(1, 1), padding='same', activation='relu')))
+    model.add(TimeDistributed(Conv2D(64, (3, 3), strides=(1, 1), padding='same', activation='relu')))
 
     model.add(TimeDistributed(Flatten()))
     #model.add(Dense(512))
